@@ -27,6 +27,7 @@ import org.traccar.database.MediaManager;
 import org.traccar.helper.LogAction;
 import org.traccar.model.Device;
 import org.traccar.model.DeviceAccumulators;
+import org.traccar.model.DeviceTrackWifiLocation;
 import org.traccar.model.Permission;
 import org.traccar.model.Position;
 import org.traccar.model.User;
@@ -276,6 +277,54 @@ public class DeviceResource extends BaseObjectResource<Device> {
         }
 
         return tokenManager.generateToken(share.getId(), expiration);
+    }
+
+    @Path("{id}/wifi-tracking")
+    @GET
+    public DeviceTrackWifiLocation getWifiTracking(@PathParam("id") long deviceId) throws StorageException {
+        permissionsService.checkPermission(Device.class, getUserId(), deviceId);
+
+        DeviceTrackWifiLocation wifiTracking = storage.getObject(DeviceTrackWifiLocation.class, new Request(
+                new Columns.All(), new Condition.Equals("device_id", deviceId)));
+
+        if (wifiTracking == null) {
+            // disabled if not present in db
+            wifiTracking = new DeviceTrackWifiLocation();
+            wifiTracking.setDeviceId(-1L);
+            wifiTracking.setTrackWifiLocation(false);
+        }
+
+        return wifiTracking;
+    }
+
+    @Path("{id}/wifi-tracking")
+    @PUT
+    public Response updateWifiTracking(@PathParam("id") long deviceId, DeviceTrackWifiLocation entity) throws StorageException {
+        permissionsService.checkPermission(Device.class, getUserId(), deviceId);
+        permissionsService.checkEdit(getUserId(), Device.class, false, false);
+
+        if (entity.getDeviceId() != deviceId) {
+            throw new IllegalArgumentException("Device ID mismatch");
+        }
+
+        DeviceTrackWifiLocation existing = storage.getObject(DeviceTrackWifiLocation.class, new Request(
+                new Columns.All(), new Condition.Equals("device_id", deviceId)));
+
+        if (existing != null) {
+            existing.setTrackWifiLocation(entity.getTrackWifiLocation());
+            existing.setChangedTrackingState(new Date());
+            storage.updateObject(existing, new Request(
+                    new Columns.Include("trackWifiLocation", "changedTrackingState"),
+                    new Condition.Equals("id", existing.getId())));
+            actionLogger.edit(request, getUserId(), existing);
+        }
+        // } else {
+        //     entity.setChangedTrackingState(new Date());
+        //     entity.setId(storage.addObject(entity, new Request(new Columns.Exclude("id"))));
+        //     actionLogger.create(request, getUserId(), entity);
+        // }
+
+        return Response.noContent().build();
     }
 
 }
