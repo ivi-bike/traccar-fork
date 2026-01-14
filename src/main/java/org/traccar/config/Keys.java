@@ -1903,6 +1903,15 @@ public final class Keys {
             List.of(KeyType.CONFIG));
 
     /**
+     * URL for the geolocation service. Used for determining approximate location using surrounding Wi-Fi networks
+     * or cell towers.
+     * If not provided, Traccar will not attempt to decode message and send data in result attribute.
+     */
+    public static final ConfigKey<String> GEOLOCATION_SERVICE_URL = new StringConfigKey(
+            "geolocation.service.url",
+            List.of(KeyType.CONFIG));
+
+    /**
      * Show logs from unknown devices.
      */
     public static final ConfigKey<Boolean> WEB_SHOW_UNKNOWN_DEVICES = new BooleanConfigKey(
