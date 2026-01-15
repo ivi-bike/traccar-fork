@@ -150,7 +150,7 @@ public class ProcessingHandler extends ChannelInboundHandlerAdapter implements B
         try {
             DeviceTrackWifiLocation wifiTracking = storage.getObject(DeviceTrackWifiLocation.class, new Request(
                     new Columns.All(), new Condition.Equals("device_id", deviceId)));
-            return wifiTracking != null && wifiTracking.getTrackWifiLocation();
+            return wifiTracking != null && wifiTracking.gettrack_wifi_location();
         } catch (StorageException e) {
             return false;
         }

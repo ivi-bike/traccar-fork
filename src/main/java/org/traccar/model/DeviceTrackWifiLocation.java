@@ -7,34 +7,34 @@ import java.util.Date;
 @StorageName("device_track_wifi_location")
 public class DeviceTrackWifiLocation extends BaseModel {
 
-    private long deviceId;
+    private long device_id;
 
-    public long getDeviceId() {
-        return deviceId;
+    public long getdevice_id() {
+        return device_id;
     }
 
-    public void setDeviceId(long deviceId) {
-        this.deviceId = deviceId;
+    public void setdevice_id(long device_id) {
+        this.device_id = device_id;
     }
 
-    private boolean trackWifiLocation;
+    private boolean track_wifi_location;
 
-    public boolean getTrackWifiLocation() {
-        return trackWifiLocation;
+    public boolean gettrack_wifi_location() {
+        return track_wifi_location;
     }
 
-    public void setTrackWifiLocation(boolean trackWifiLocation) {
-        this.trackWifiLocation = trackWifiLocation;
+    public void settrack_wifi_location(boolean track_wifi_location) {
+        this.track_wifi_location = track_wifi_location;
     }
 
-    private Date changedTrackingState;
+    private Date changed_tracking_state;
 
-    public Date getChangedTrackingState() {
-        return changedTrackingState;
+    public Date getchanged_tracking_state() {
+        return changed_tracking_state;
     }
 
-    public void setChangedTrackingState(Date changedTrackingState) {
-        this.changedTrackingState = changedTrackingState;
+    public void setchanged_tracking_state(Date changedTrackingState) {
+        this.changed_tracking_state = changedTrackingState;
     }
 
 }
