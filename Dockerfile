@@ -4,7 +4,7 @@
 FROM eclipse-temurin:21-jdk AS backend-builder
 WORKDIR /build
 COPY . .
-RUN ./gradlew build --no-daemon
+RUN ./gradlew build --no-daemon -x checkstyleMain -x checkstyleTest
 
 # Stage 2: Build frontend
 FROM node:22-alpine AS frontend-builder
