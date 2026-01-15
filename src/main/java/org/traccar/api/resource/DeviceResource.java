@@ -299,7 +299,8 @@ public class DeviceResource extends BaseObjectResource<Device> {
 
     @Path("{id}/wifi-tracking")
     @PUT
-    public Response updateWifiTracking(@PathParam("id") long deviceId, DeviceTrackWifiLocation entity) throws StorageException {
+    public Response updateWifiTracking(@PathParam("id") long deviceId, DeviceTrackWifiLocation entity)
+            throws StorageException {
         permissionsService.checkPermission(Device.class, getUserId(), deviceId);
         permissionsService.checkEdit(getUserId(), Device.class, false, false);
 

@@ -23,7 +23,11 @@ import io.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
 import org.traccar.config.Keys;
 import org.traccar.helper.BufferUtil;
-import org.traccar.model.*;
+import org.traccar.model.Position;
+import org.traccar.model.Network;
+import org.traccar.model.CellTower;
+import org.traccar.model.WifiAccessPoint;
+import org.traccar.model.GeolocationServiceResponse;
 import org.traccar.session.DeviceSession;
 import org.traccar.NetworkMessage;
 import org.traccar.Protocol;
@@ -44,7 +48,12 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
-import java.util.*;
+import java.util.Date;
+import java.util.Map;
+import java.util.HashMap;
+import java.util.TimeZone;
+import java.util.Locale;
+import java.util.Set;
 import java.util.Calendar;
 import java.util.regex.Pattern;
 
@@ -64,7 +73,7 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected void init() {
-        setGeolocationServiceUrl(getConfig().getString(Keys.GEOLOCATION_SERVICE_URL, "http://localhost:32768/api/process_raw"));
+        setGeolocationServiceUrl(getConfig().getString(Keys.GEOLOCATION_SERVICE_URL, ""));
 
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
@@ -1115,7 +1124,8 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
         return dateBuilder.getDate();
     }
 
-    private Object decodeExtended(Channel channel, SocketAddress remoteAddress, ByteBuf buf) throws IOException, InterruptedException {
+    private Object decodeExtended(Channel channel, SocketAddress remoteAddress, ByteBuf buf)
+            throws IOException, InterruptedException {
 
         DeviceSession deviceSession = getDeviceSession(channel, remoteAddress);
         if (deviceSession == null) {
@@ -1151,7 +1161,8 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
                 position.setCourse(parser.nextDouble());
                 position.setSpeed(parser.nextDouble());
                 position.setTime(parser.nextDateTime(Parser.DateTimeFormat.YMD_HMS));
-            } else if (!geolocationServiceUrl.isEmpty() && data.startsWith("0103") && data.toUpperCase(Locale.US).contains("2DD4")
+            } else if (!geolocationServiceUrl.isEmpty() && data.startsWith("0103")
+                    && data.toUpperCase(Locale.US).contains("2DD4")
                     && data.length() >= 14) {
                 // data packet contains surrounding wifi networks
 

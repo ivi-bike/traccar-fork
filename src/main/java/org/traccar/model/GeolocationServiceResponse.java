@@ -2,40 +2,40 @@ package org.traccar.model;
 
 public class GeolocationServiceResponse {
 
-	private Double lat;
-	private Double lon;
-	private Double accuracy;
-	private String source;
+    private Double lat;
+    private Double lon;
+    private Double accuracy;
+    private String source;
 
-	public Double getLat() {
-		return lat;
-	}
+    public Double getLat() {
+          return lat;
+    }
 
-	public void setLat(Double lat) {
-		this.lat = lat;
-	}
+    public void setLat(Double lat) {
+          this.lat = lat;
+    }
 
-	public Double getLon() {
-		return lon;
-	}
+    public Double getLon() {
+          return lon;
+    }
 
-	public void setLon(Double lon) {
-		this.lon = lon;
-	}
+    public void setLon(Double lon) {
+          this.lon = lon;
+    }
 
-	public Double getAccuracy() {
-		return accuracy;
-	}
+    public Double getAccuracy() {
+          return accuracy;
+    }
 
-	public void setAccuracy(Double accuracy) {
-		this.accuracy = accuracy;
-	}
+    public void setAccuracy(Double accuracy) {
+          this.accuracy = accuracy;
+    }
 
-	public String getSource() {
-		return source;
-	}
+    public String getSource() {
+          return source;
+    }
 
-	public void setSource(String source) {
-		this.source = source;
-	}
+    public void setSource(String source) {
+          this.source = source;
+    }
 }
