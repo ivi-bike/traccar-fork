@@ -56,8 +56,14 @@ import org.traccar.handler.events.MotionEventHandler;
 import org.traccar.handler.events.OverspeedEventHandler;
 import org.traccar.handler.network.AcknowledgementHandler;
 import org.traccar.helper.PositionLogger;
+import org.traccar.model.DeviceTrackWifiLocation;
 import org.traccar.model.Position;
 import org.traccar.session.cache.CacheManager;
+import org.traccar.storage.Storage;
+import org.traccar.storage.StorageException;
+import org.traccar.storage.query.Columns;
+import org.traccar.storage.query.Condition;
+import org.traccar.storage.query.Request;
 
 import java.util.HashMap;
 import java.util.LinkedList;
@@ -75,9 +81,11 @@ public class ProcessingHandler extends ChannelInboundHandlerAdapter implements B
     private final NotificationManager notificationManager;
     private final PositionLogger positionLogger;
     private final BufferingManager bufferingManager;
+    private final Storage storage;
     private final List<BasePositionHandler> positionHandlers;
     private final List<BaseEventHandler> eventHandlers;
     private final PostProcessHandler postProcessHandler;
+    private final DatabaseHandler databaseHandler;
 
     private final Map<Long, Queue<Position>> queues = new HashMap<>();
 
@@ -88,10 +96,12 @@ public class ProcessingHandler extends ChannelInboundHandlerAdapter implements B
     @Inject
     public ProcessingHandler(
             Injector injector, Config config,
-            CacheManager cacheManager, NotificationManager notificationManager, PositionLogger positionLogger) {
+            CacheManager cacheManager, NotificationManager notificationManager, PositionLogger positionLogger,
+            Storage storage) {
         this.cacheManager = cacheManager;
         this.notificationManager = notificationManager;
         this.positionLogger = positionLogger;
+        this.storage = storage;
         bufferingManager = new BufferingManager(config, this);
 
         positionHandlers = Stream.of(
@@ -133,6 +143,21 @@ public class ProcessingHandler extends ChannelInboundHandlerAdapter implements B
                 .toList();
 
         postProcessHandler = injector.getInstance(PostProcessHandler.class);
+        databaseHandler = injector.getInstance(DatabaseHandler.class);
+    }
+
+    private boolean isWifiTrackingEnabled(long deviceId) {
+        try {
+            DeviceTrackWifiLocation wifiTracking = storage.getObject(DeviceTrackWifiLocation.class, new Request(
+                    new Columns.All(), new Condition.Equals("device_id", deviceId)));
+            return wifiTracking != null && wifiTracking.getTrackWifiLocation();
+        } catch (StorageException e) {
+            return false;
+        }
+    }
+
+    private boolean isWifiPosition(Position position) {
+        return position.hasAttribute(Position.KEY_SOURCE);
     }
 
     @Override
@@ -154,7 +179,17 @@ public class ProcessingHandler extends ChannelInboundHandlerAdapter implements B
             queue.offer(position);
         }
         if (!queued) {
-            processPositionHandlers(context, position);
+            if (isWifiTrackingEnabled(position.getDeviceId()) && !isWifiPosition(position)) {
+                // save to database without processing
+                databaseHandler.handlePosition(position, new BasePositionHandler.Callback() {
+                    @Override
+                    public void processed(boolean filtered) {
+                        finishedProcessing(context, position, false);
+                    }
+                });
+            } else {
+                processPositionHandlers(context, position);
+            }
         }
     }
 

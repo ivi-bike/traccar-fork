@@ -15,12 +15,19 @@
  */
 package org.traccar.protocol;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.netty.buffer.ByteBuf;
 import io.netty.buffer.ByteBufUtil;
 import io.netty.buffer.Unpooled;
 import io.netty.channel.Channel;
 import org.traccar.BaseProtocolDecoder;
+import org.traccar.config.Keys;
 import org.traccar.helper.BufferUtil;
+import org.traccar.model.Position;
+import org.traccar.model.Network;
+import org.traccar.model.CellTower;
+import org.traccar.model.WifiAccessPoint;
+import org.traccar.model.GeolocationServiceResponse;
 import org.traccar.session.DeviceSession;
 import org.traccar.NetworkMessage;
 import org.traccar.Protocol;
@@ -31,27 +38,51 @@ import org.traccar.helper.DateBuilder;
 import org.traccar.helper.Parser;
 import org.traccar.helper.PatternBuilder;
 import org.traccar.helper.UnitsConverter;
-import org.traccar.model.CellTower;
-import org.traccar.model.Network;
-import org.traccar.model.Position;
-import org.traccar.model.WifiAccessPoint;
 
+import java.io.IOException;
 import java.net.SocketAddress;
+import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.util.Calendar;
+import java.time.Duration;
+import java.time.Instant;
 import java.util.Date;
-import java.util.HashMap;
 import java.util.Map;
-import java.util.Set;
+import java.util.HashMap;
 import java.util.TimeZone;
+import java.util.Locale;
+import java.util.Set;
+import java.util.Calendar;
 import java.util.regex.Pattern;
 
 public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
 
     private final Map<Integer, ByteBuf> photos = new HashMap<>();
 
+    private String geolocationServiceUrl = "";
+
+    private HttpClient httpClient;
+
+    private ObjectMapper objectMapper = new ObjectMapper();
+
     public Gt06ProtocolDecoder(Protocol protocol) {
         super(protocol);
+    }
+
+    @Override
+    protected void init() {
+        setGeolocationServiceUrl(getConfig().getString(Keys.GEOLOCATION_SERVICE_URL, ""));
+
+        this.httpClient = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .followRedirects(HttpClient.Redirect.NORMAL)
+                .build();
+    }
+
+    private void setGeolocationServiceUrl(String geolocationServiceUrl) {
+        this.geolocationServiceUrl = geolocationServiceUrl;
     }
 
     public static final int MSG_LOGIN = 0x01;
@@ -1093,7 +1124,8 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
         return dateBuilder.getDate();
     }
 
-    private Object decodeExtended(Channel channel, SocketAddress remoteAddress, ByteBuf buf) {
+    private Object decodeExtended(Channel channel, SocketAddress remoteAddress, ByteBuf buf)
+            throws IOException, InterruptedException {
 
         DeviceSession deviceSession = getDeviceSession(channel, remoteAddress);
         if (deviceSession == null) {
@@ -1129,6 +1161,38 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
                 position.setCourse(parser.nextDouble());
                 position.setSpeed(parser.nextDouble());
                 position.setTime(parser.nextDateTime(Parser.DateTimeFormat.YMD_HMS));
+            } else if (!geolocationServiceUrl.isEmpty() && data.startsWith("0103")
+                    && data.toUpperCase(Locale.US).contains("2DD4")
+                    && data.length() >= 14) {
+                // data packet contains surrounding wifi networks
+
+                String jsonBody = String.format("{\"data\": \"%s\",\"device_id\": %d, \"source\": \"wifi\"}",
+                        data, deviceSession.getDeviceId());
+
+                HttpRequest request = HttpRequest.newBuilder()
+                        .uri(URI.create(geolocationServiceUrl))
+                        .header("Content-Type", "application/json")
+                        .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
+                        .build();
+
+                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+
+                System.out.println("Status Code: " + response.statusCode());
+                System.out.println("Response: " + response.body());
+                if (response.statusCode() == 200) {
+                    GeolocationServiceResponse geolocation =
+                            objectMapper.readValue(response.body(), GeolocationServiceResponse.class);
+
+                    position.setLatitude(geolocation.getLat());
+                    position.setLongitude(geolocation.getLon());
+                    position.setAccuracy(geolocation.getAccuracy());
+                    position.set(Position.KEY_SOURCE, geolocation.getSource());
+                    position.setTime(Date.from(Instant.now()));
+                } else {
+                    getLastLocation(position, null);
+                    position.set(Position.KEY_RESULT, data);
+                }
+
             } else {
                 getLastLocation(position, null);
                 position.set(Position.KEY_RESULT, data);
