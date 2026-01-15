@@ -10,7 +10,7 @@ RUN ./gradlew build --no-daemon
 FROM node:22-alpine AS frontend-builder
 WORKDIR /build
 COPY traccar-web/package*.json ./
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 COPY traccar-web/ ./
 RUN npm run build
 
