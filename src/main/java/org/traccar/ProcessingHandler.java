@@ -179,7 +179,8 @@ public class ProcessingHandler extends ChannelInboundHandlerAdapter implements B
             queue.offer(position);
         }
         if (!queued) {
-            if (isWifiTrackingEnabled(position.getDeviceId()) && !isWifiPosition(position)) {
+            boolean wifiTrackingEnabled = isWifiTrackingEnabled(position.getDeviceId());
+            if (wifiTrackingEnabled && !isWifiPosition(position) || !wifiTrackingEnabled && isWifiPosition(position)) {
                 // save to database without processing
                 databaseHandler.handlePosition(position, new BasePositionHandler.Callback() {
                     @Override
