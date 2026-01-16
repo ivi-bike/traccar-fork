@@ -1190,6 +1190,7 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
                     position.setTime(Date.from(Instant.now()));
                 } else {
                     getLastLocation(position, null);
+                    position.set(Position.KEY_SOURCE, "wifi");
                     position.set(Position.KEY_RESULT, data);
                 }
 
