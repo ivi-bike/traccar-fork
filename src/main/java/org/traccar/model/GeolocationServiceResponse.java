@@ -1,10 +1,14 @@
 package org.traccar.model;
 
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
+
 public class GeolocationServiceResponse {
 
     private Double lat;
     private Double lon;
-    private Double accuracy;
+    @JsonSetter(nulls = Nulls.SKIP)
+    private Double accuracy = 0.0;
     private String source;
 
     public Double getLat() {

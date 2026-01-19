@@ -65,7 +65,7 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
 
     private HttpClient httpClient;
 
-    private ObjectMapper objectMapper = new ObjectMapper();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     public Gt06ProtocolDecoder(Protocol protocol) {
         super(protocol);
@@ -73,7 +73,7 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
 
     @Override
     protected void init() {
-        setGeolocationServiceUrl(getConfig().getString(Keys.GEOLOCATION_SERVICE_URL, ""));
+        setGeolocationServiceUrl(getConfig().getString(Keys.GEOLOCATION_SERVICE_URL, "http://localhost:8050/api/process_raw"));
 
         this.httpClient = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
@@ -1175,24 +1175,31 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
                         .POST(HttpRequest.BodyPublishers.ofString(jsonBody))
                         .build();
 
-                HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
+                try {
+                    HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString());
 
-                System.out.println("Status Code: " + response.statusCode());
-                System.out.println("Response: " + response.body());
-                if (response.statusCode() == 200) {
-                    GeolocationServiceResponse geolocation =
-                            objectMapper.readValue(response.body(), GeolocationServiceResponse.class);
+                    System.out.println("Status Code: " + response.statusCode());
+                    System.out.println("Response: " + response.body());
+                    if (response.statusCode() == 200) {
+                        GeolocationServiceResponse geolocation =
+                                objectMapper.readValue(response.body(), GeolocationServiceResponse.class);
 
-                    position.setLatitude(geolocation.getLat());
-                    position.setLongitude(geolocation.getLon());
-                    position.setAccuracy(geolocation.getAccuracy());
-                    position.set(Position.KEY_SOURCE, geolocation.getSource());
-                    position.setTime(Date.from(Instant.now()));
-                } else {
+                        position.setLatitude(geolocation.getLat());
+                        position.setLongitude(geolocation.getLon());
+                        position.setAccuracy(geolocation.getAccuracy());
+                        position.set(Position.KEY_SOURCE, geolocation.getSource());
+                        position.setTime(Date.from(Instant.now()));
+                    } else {
+                        getLastLocation(position, null);
+                        position.set(Position.KEY_SOURCE, "wifi " + response.body());
+                        position.set(Position.KEY_RESULT, data);
+                    }
+                } catch (IOException e) {
                     getLastLocation(position, null);
-                    position.set(Position.KEY_SOURCE, "wifi");
+                    position.set(Position.KEY_SOURCE, "wifi-service-not-accessible");
                     position.set(Position.KEY_RESULT, data);
                 }
+
 
             } else {
                 getLastLocation(position, null);
