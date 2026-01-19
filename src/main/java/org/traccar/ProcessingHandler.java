@@ -60,6 +60,7 @@ import org.traccar.handler.network.AcknowledgementHandler;
 import org.traccar.helper.PositionLogger;
 import org.traccar.model.DeviceTrackWifiLocation;
 import org.traccar.model.Position;
+import org.traccar.session.ConnectionManager;
 import org.traccar.session.cache.CacheManager;
 import org.traccar.storage.Storage;
 import org.traccar.storage.StorageException;
@@ -88,6 +89,7 @@ public class ProcessingHandler extends ChannelInboundHandlerAdapter implements B
     private final List<BasePositionHandler> limpPositionHandlers;
     private final List<BaseEventHandler> eventHandlers;
     private final PostProcessHandler postProcessHandler;
+    private final ConnectionManager connectionManager;
     private static final Logger LOGGER = LoggerFactory.getLogger(ProcessingHandler.class);
 
     private final Map<Long, Queue<Position>> queues = new HashMap<>();
@@ -156,6 +158,7 @@ public class ProcessingHandler extends ChannelInboundHandlerAdapter implements B
                 .toList();
 
         postProcessHandler = injector.getInstance(PostProcessHandler.class);
+        connectionManager = injector.getInstance(ConnectionManager.class);
     }
 
     private boolean isWifiTrackingEnabled(long deviceId) {
@@ -264,6 +267,7 @@ public class ProcessingHandler extends ChannelInboundHandlerAdapter implements B
         if (!filtered) {
             positionLogger.log(ctx, position);
             ctx.writeAndFlush(new AcknowledgementHandler.EventHandled(position));
+            connectionManager.updatePosition(true, position);
             processNextPosition(ctx, position.getDeviceId());
         } else {
             ctx.writeAndFlush(new AcknowledgementHandler.EventHandled(position));
