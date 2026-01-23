@@ -18,6 +18,7 @@ package org.traccar.api.resource;
 import org.traccar.api.BaseResource;
 import org.traccar.helper.model.PositionUtil;
 import org.traccar.model.Device;
+import org.traccar.model.DeviceWifiLocationFetchHistory;
 import org.traccar.model.Geofence;
 import org.traccar.model.Position;
 import org.traccar.model.UserRestrictions;
@@ -27,6 +28,7 @@ import org.traccar.reports.KmlExportProvider;
 import org.traccar.storage.StorageException;
 import org.traccar.storage.query.Columns;
 import org.traccar.storage.query.Condition;
+import org.traccar.storage.query.Order;
 import org.traccar.storage.query.Request;
 
 import jakarta.inject.Inject;
@@ -65,7 +67,8 @@ public class PositionResource extends BaseResource {
     @GET
     public Stream<Position> getJson(
             @QueryParam("deviceId") long deviceId, @QueryParam("id") List<Long> positionIds,
-            @QueryParam("geofenceId") long geofenceId, @QueryParam("from") Date from, @QueryParam("to") Date to)
+            @QueryParam("geofenceId") long geofenceId, @QueryParam("from") Date from, @QueryParam("to") Date to,
+            @QueryParam("sourceType") String sourceType)
             throws StorageException {
         if (!positionIds.isEmpty()) {
             var positions = new ArrayList<Position>();
@@ -81,11 +84,52 @@ public class PositionResource extends BaseResource {
             if (from != null && to != null) {
                 permissionsService.checkRestriction(getUserId(), UserRestrictions::getDisableReports);
 
+                if ("lbs".equalsIgnoreCase(sourceType)) {
+                    var conditions = new LinkedList<Condition>();
+                    conditions.add(new Condition.Equals("device_id", deviceId));
+                    conditions.add(new Condition.Equals("source_type", "lbs"));
+                    conditions.add(new Condition.Between("recorded_at", from, to));
+                    return storage.getObjectsStream(DeviceWifiLocationFetchHistory.class, new Request(
+                            new Columns.All(),
+                            Condition.merge(conditions),
+                            new Order("recorded_at")))
+                            .filter(it -> it.getwifi_latitude() != null && it.getwifi_longitude() != null)
+                            .map(it -> {
+                                Position position = new Position();
+                                position.setId(it.getId());
+                                position.setDeviceId(deviceId);
+                                position.setValid(true);
+                                position.setLatitude(it.getwifi_latitude());
+                                position.setLongitude(it.getwifi_longitude());
+                                position.setAccuracy(it.getwifi_accuracy() != null ? it.getwifi_accuracy() : 0.0);
+                                position.setFixTime(it.getrecorded_at());
+                                position.setDeviceTime(it.getrecorded_at());
+                                position.setServerTime(it.getrecorded_at());
+                                position.set(Position.KEY_SOURCE, "lbs");
+                                return position;
+                            });
+                }
+
                 Geofence geofence = geofenceId == 0 ? null : storage.getObject(Geofence.class, new Request(
                         new Columns.All(), new Condition.Equals("id", geofenceId)));
 
                 return PositionUtil.getPositionsStream(storage, deviceId, from, to)
-                        .filter(position -> geofence == null || geofence.containsPosition(position));
+                        .filter(position -> geofence == null || geofence.containsPosition(position))
+                        .filter(position -> {
+                            if (sourceType == null || sourceType.isEmpty()
+                                    || "all".equalsIgnoreCase(sourceType)) {
+                                return true;
+                            }
+                            String source = position.getString(Position.KEY_SOURCE);
+                            if ("gps".equalsIgnoreCase(sourceType)) {
+                                // GPS positions either have explicit "gps" or no source value at all
+                                return source == null || source.isEmpty()
+                                        || "gps".equalsIgnoreCase(source);
+                            } else {
+                                // wifi / lbs or any other future explicit source type
+                                return sourceType.equalsIgnoreCase(source);
+                            }
+                        });
             } else {
                 return storage.getObjectsStream(Position.class, new Request(
                         new Columns.All(), new Condition.LatestPositions(deviceId)));
