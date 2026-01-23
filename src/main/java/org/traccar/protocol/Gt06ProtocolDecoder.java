@@ -46,8 +46,7 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
-import java.time.Duration;
-import java.time.Instant;
+import java.time.*;
 import java.util.Date;
 import java.util.Map;
 import java.util.HashMap;
@@ -1124,6 +1123,22 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
         return dateBuilder.getDate();
     }
 
+    private static Date getCurrentTimeAccordingToDeviceTimezone(DeviceSession deviceSession) {
+        Instant instant = Instant.now();
+        TimeZone tz = (TimeZone) deviceSession.get(DeviceSession.KEY_TIMEZONE);
+
+        int offsetSeconds = tz.getRawOffset() / 1000;
+        ZoneOffset offset = ZoneOffset.ofTotalSeconds(offsetSeconds);
+
+        LocalDateTime localTime = LocalDateTime.ofInstant(instant, ZoneOffset.UTC);
+
+        OffsetDateTime odt = OffsetDateTime.of(localTime, offset);
+
+        Instant resultInstant = odt.withOffsetSameInstant(ZoneOffset.UTC).toInstant();
+
+        return Date.from(resultInstant);
+    }
+
     private Object decodeExtended(Channel channel, SocketAddress remoteAddress, ByteBuf buf)
             throws IOException, InterruptedException {
 
@@ -1188,7 +1203,8 @@ public class Gt06ProtocolDecoder extends BaseProtocolDecoder {
                         position.setLongitude(geolocation.getLon());
                         position.setAccuracy(geolocation.getAccuracy());
                         position.set(Position.KEY_SOURCE, geolocation.getSource());
-                        position.setTime(Date.from(Instant.now()));
+                        Date date = getCurrentTimeAccordingToDeviceTimezone(deviceSession);
+                        position.setTime(date);
                     } else {
                         getLastLocation(position, null);
                         position.set(Position.KEY_SOURCE, "wifi " + response.body());
