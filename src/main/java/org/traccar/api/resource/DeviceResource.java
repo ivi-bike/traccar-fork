@@ -290,8 +290,8 @@ public class DeviceResource extends BaseObjectResource<Device> {
         if (wifiTracking == null) {
             // disabled if not present in db
             wifiTracking = new DeviceTrackWifiLocation();
-            wifiTracking.setDeviceId(-1L);
-            wifiTracking.setTrackWifiLocation(false);
+            wifiTracking.setdevice_id(-1L);
+            wifiTracking.settrack_wifi_location(false);
         }
 
         return wifiTracking;
@@ -304,7 +304,7 @@ public class DeviceResource extends BaseObjectResource<Device> {
         permissionsService.checkPermission(Device.class, getUserId(), deviceId);
         permissionsService.checkEdit(getUserId(), Device.class, false, false);
 
-        if (entity.getDeviceId() != deviceId) {
+        if (entity.getdevice_id() != deviceId) {
             throw new IllegalArgumentException("Device ID mismatch");
         }
 
@@ -312,10 +312,10 @@ public class DeviceResource extends BaseObjectResource<Device> {
                 new Columns.All(), new Condition.Equals("device_id", deviceId)));
 
         if (existing != null) {
-            existing.setTrackWifiLocation(entity.getTrackWifiLocation());
-            existing.setChangedTrackingState(new Date());
+            existing.settrack_wifi_location(entity.gettrack_wifi_location());
+            existing.setchanged_tracking_state(new Date());
             storage.updateObject(existing, new Request(
-                    new Columns.Include("trackWifiLocation", "changedTrackingState"),
+                    new Columns.Include("track_wifi_location", "changed_tracking_state"),
                     new Condition.Equals("id", existing.getId())));
             actionLogger.edit(request, getUserId(), existing);
         }

@@ -21,6 +21,8 @@ import io.netty.channel.ChannelHandlerContext;
 import io.netty.channel.ChannelInboundHandlerAdapter;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.traccar.config.Config;
 import org.traccar.database.BufferingManager;
 import org.traccar.database.NotificationManager;
@@ -58,6 +60,7 @@ import org.traccar.handler.network.AcknowledgementHandler;
 import org.traccar.helper.PositionLogger;
 import org.traccar.model.DeviceTrackWifiLocation;
 import org.traccar.model.Position;
+import org.traccar.session.ConnectionManager;
 import org.traccar.session.cache.CacheManager;
 import org.traccar.storage.Storage;
 import org.traccar.storage.StorageException;
@@ -83,9 +86,11 @@ public class ProcessingHandler extends ChannelInboundHandlerAdapter implements B
     private final BufferingManager bufferingManager;
     private final Storage storage;
     private final List<BasePositionHandler> positionHandlers;
+    private final List<BasePositionHandler> limpPositionHandlers;
     private final List<BaseEventHandler> eventHandlers;
     private final PostProcessHandler postProcessHandler;
-    private final DatabaseHandler databaseHandler;
+    private final ConnectionManager connectionManager;
+    private static final Logger LOGGER = LoggerFactory.getLogger(ProcessingHandler.class);
 
     private final Map<Long, Queue<Position>> queues = new HashMap<>();
 
@@ -126,6 +131,16 @@ public class ProcessingHandler extends ChannelInboundHandlerAdapter implements B
                 .filter(Objects::nonNull)
                 .toList();
 
+        limpPositionHandlers = Stream.of(
+                ComputedAttributesHandler.Early.class,
+                OutdatedHandler.class,
+                TimeHandler.class,
+                PositionForwardingHandler.class,
+                DatabaseHandler.class)
+                .map((clazz) -> (BasePositionHandler) injector.getInstance(clazz))
+                .filter(Objects::nonNull)
+                .toList();
+
         eventHandlers = Stream.of(
                 MediaEventHandler.class,
                 CommandResultEventHandler.class,
@@ -143,14 +158,14 @@ public class ProcessingHandler extends ChannelInboundHandlerAdapter implements B
                 .toList();
 
         postProcessHandler = injector.getInstance(PostProcessHandler.class);
-        databaseHandler = injector.getInstance(DatabaseHandler.class);
+        connectionManager = injector.getInstance(ConnectionManager.class);
     }
 
     private boolean isWifiTrackingEnabled(long deviceId) {
         try {
             DeviceTrackWifiLocation wifiTracking = storage.getObject(DeviceTrackWifiLocation.class, new Request(
                     new Columns.All(), new Condition.Equals("device_id", deviceId)));
-            return wifiTracking != null && wifiTracking.getTrackWifiLocation();
+            return wifiTracking != null && wifiTracking.gettrack_wifi_location();
         } catch (StorageException e) {
             return false;
         }
@@ -179,18 +194,41 @@ public class ProcessingHandler extends ChannelInboundHandlerAdapter implements B
             queue.offer(position);
         }
         if (!queued) {
-            if (isWifiTrackingEnabled(position.getDeviceId()) && !isWifiPosition(position)) {
-                // save to database without processing
-                databaseHandler.handlePosition(position, new BasePositionHandler.Callback() {
-                    @Override
-                    public void processed(boolean filtered) {
-                        finishedProcessing(context, position, false);
-                    }
-                });
+            boolean wifiTrackingEnabled = isWifiTrackingEnabled(position.getDeviceId());
+            if (wifiTrackingEnabled && !isWifiPosition(position) || !wifiTrackingEnabled && isWifiPosition(position)) {
+                // save to database without updating cache and last position id
+                processLimpPositionHandlers(context, position);
             } else {
                 processPositionHandlers(context, position);
             }
         }
+    }
+
+    private void processLimpPositionHandlers(ChannelHandlerContext ctx, Position position) {
+        var iterator = limpPositionHandlers.iterator();
+        iterator.next().handlePosition(position, new BasePositionHandler.Callback() {
+            @Override
+            public void processed(boolean filtered) {
+                Runnable continuation = () -> {
+                    if (!filtered) {
+                        if (iterator.hasNext()) {
+                            iterator.next().handlePosition(position, this);
+                        } else {
+                            LOGGER.info("skipping PostProcessHandler and EventHandler");
+                            finishedLimpProcessing(ctx, position, false);
+                        }
+                    } else {
+                        LOGGER.info("skipping PostProcessHandler and EventHandler (filtered)");
+                        finishedLimpProcessing(ctx, position, true);
+                    }
+                };
+                if (ctx.executor().inEventLoop()) {
+                    continuation.run();
+                } else {
+                    ctx.executor().execute(continuation);
+                }
+            }
+        });
     }
 
     private void processPositionHandlers(ChannelHandlerContext ctx, Position position) {
@@ -224,6 +262,20 @@ public class ProcessingHandler extends ChannelInboundHandlerAdapter implements B
         finishedProcessing(ctx, position, false);
     }
 
+
+    private void finishedLimpProcessing(ChannelHandlerContext ctx, Position position, boolean filtered) {
+        if (!filtered) {
+            positionLogger.log(ctx, position);
+            ctx.writeAndFlush(new AcknowledgementHandler.EventHandled(position));
+            connectionManager.updatePosition(true, position);
+            processNextPosition(ctx, position.getDeviceId());
+        } else {
+            ctx.writeAndFlush(new AcknowledgementHandler.EventHandled(position));
+            processNextLimpPosition(ctx, position.getDeviceId());
+        }
+        cacheManager.removeDevice(position.getDeviceId(), position);
+    }
+
     private void finishedProcessing(ChannelHandlerContext ctx, Position position, boolean filtered) {
         if (!filtered) {
             postProcessHandler.handlePosition(position, ignore -> {
@@ -236,6 +288,18 @@ public class ProcessingHandler extends ChannelInboundHandlerAdapter implements B
             processNextPosition(ctx, position.getDeviceId());
         }
         cacheManager.removeDevice(position.getDeviceId(), position);
+    }
+
+    private void processNextLimpPosition(ChannelHandlerContext ctx, long deviceId) {
+        Queue<Position> queue = getQueue(deviceId);
+        Position nextPosition;
+        synchronized (queue) {
+            queue.poll(); // remove current position
+            nextPosition = queue.peek();
+        }
+        if (nextPosition != null) {
+            ctx.executor().execute(() -> processLimpPositionHandlers(ctx, nextPosition));
+        }
     }
 
     private void processNextPosition(ChannelHandlerContext ctx, long deviceId) {
